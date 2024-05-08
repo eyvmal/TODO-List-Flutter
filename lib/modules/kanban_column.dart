@@ -7,49 +7,36 @@ class KanbanColumn extends StatefulWidget {
   final String title;
   final Color color;
   final int columnId;
+  final double maxWidth;
 
   const KanbanColumn({
     super.key,
     required this.title,
     required this.color,
     required this.columnId,
+    this.maxWidth = 300.0,
   });
 
   @override
-  State<KanbanColumn> createState() => _KanbanColumnState();
+  KanbanColumnState createState() => KanbanColumnState();
 }
 
-class _KanbanColumnState extends State<KanbanColumn> {
-  final TextEditingController _controller = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
-  bool _needToRefocus = false;
+class KanbanColumnState extends State<KanbanColumn> {
+  late TextEditingController controller;
+  late FocusNode focusNode;
 
   @override
   void initState() {
     super.initState();
-    _focusNode.addListener(_focusListener);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.columnId == 0) {
-        _focusNode.requestFocus();
-      }
-    });
+    controller = TextEditingController();
+    focusNode = FocusNode();
   }
 
   @override
   void dispose() {
-    _focusNode.removeListener(_focusListener);
-    _focusNode.dispose();
-    _controller.dispose();
+    controller.dispose();
+    focusNode.dispose();
     super.dispose();
-  }
-
-  void _focusListener() {
-    if (_needToRefocus && !_focusNode.hasFocus) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _focusNode.requestFocus();
-      });
-    }
   }
 
   @override
@@ -59,73 +46,144 @@ class _KanbanColumnState extends State<KanbanColumn> {
         .where((task) => task.column == widget.columnId.toString())
         .toList();
 
+    return Flexible(
+      flex: 1,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: widget.maxWidth),
+        child: Container(
+          margin: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: widget.color,
+            borderRadius: BorderRadius.circular(50),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Text(
+                  widget.title,
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: tasks.length + (widget.columnId == 0 ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (widget.columnId == 0 && index == tasks.length) {
+                      return _buildTaskInput();
+                    }
+                    return _buildTaskTile(tasks[index]);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskTile(Task task) {
     return Container(
-      width: 300,
-      margin: const EdgeInsets.all(10),
-      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        color: widget.color,
-        borderRadius: BorderRadius.circular(50),
+        color: darken(widget.color, 0.1),
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Text(
-              widget.title,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+      child: ListTile(
+        title: Text(task.title, style: const TextStyle(color: Colors.black)),
+        onTap: () =>
+            Provider.of<TaskProvider>(context, listen: false).moveTask(task.id),
+        trailing: PopupMenuButton<String>(
+          onSelected: (String value) {
+            switch (value) {
+              case 'edit':
+                _editTask(task);
+                break;
+              case 'delete':
+                Provider.of<TaskProvider>(context, listen: false)
+                    .deleteTask(task.id, context);
+                break;
+            }
+          },
+          itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+            const PopupMenuItem<String>(
+              value: 'edit',
+              child: Text('Edit'),
             ),
-          ),
-          Expanded(
-            child: ListView(
-              children: [
-                ...tasks.map((task) => Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      decoration: BoxDecoration(
-                        color: darken(widget.color, 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: ListTile(
-                        title: Text(task.title,
-                            style: const TextStyle(color: Colors.black)),
-                        onTap: () =>
-                            Provider.of<TaskProvider>(context, listen: false)
-                                .moveTask(task.id),
-                        onLongPress: () =>
-                            Provider.of<TaskProvider>(context, listen: false)
-                                .moveTaskBack(task.id, context),
-                      ),
-                    )),
-                if (widget.columnId == 0) ...[
-                  TextField(
-                    focusNode: _focusNode,
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      hintText: 'Type a new task',
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide.none,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white24,
-                    ),
-                    style: const TextStyle(color: Colors.black),
-                    onSubmitted: (value) {
-                      if (value.isNotEmpty) {
-                        Provider.of<TaskProvider>(context, listen: false)
-                            .addTask(value, widget.columnId);
-                        _controller.clear();
-                        _needToRefocus = true;
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                ]
-              ],
+            const PopupMenuItem<String>(
+              value: 'delete',
+              child: Text('Delete'),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  void _editTask(Task task) {
+    TextEditingController editController =
+        TextEditingController(text: task.title);
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Edit Task"),
+          content: TextField(
+            controller: editController,
+            autofocus: true,
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('Save'),
+              onPressed: () {
+                if (editController.text.isNotEmpty) {
+                  Provider.of<TaskProvider>(context, listen: false)
+                      .editTask(task.id, editController.text);
+                  Navigator.of(context).pop();
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTaskInput() {
+    return TextField(
+      focusNode: focusNode,
+      controller: controller,
+      decoration: InputDecoration(
+        hintText: 'Type a new task',
+        border: OutlineInputBorder(
+          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        filled: true,
+        fillColor: Colors.white24,
+      ),
+      style: const TextStyle(color: Colors.black),
+      onSubmitted: (value) {
+        if (value.isNotEmpty) {
+          Provider.of<TaskProvider>(context, listen: false)
+              .addTask(value, widget.columnId);
+          controller.clear();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (focusNode.canRequestFocus) {
+              focusNode.requestFocus();
+            }
+          });
+        }
+      },
     );
   }
 

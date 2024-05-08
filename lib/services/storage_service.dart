@@ -24,4 +24,14 @@ class StorageService {
     String encoded = jsonEncode(tasks.map((task) => task.toJson()).toList());
     await _prefs?.setString('tasks', encoded);
   }
+
+  Future<String?> loadProjectName() async {
+    await init();
+    return _prefs?.getString('projectName');
+  }
+
+  Future<void> saveProjectName(String? name) async {
+    await init();
+    await _prefs?.setString('projectName', name!);
+  }
 }
